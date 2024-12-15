@@ -1,5 +1,6 @@
 import 'phaser';
 import { MainScene } from './main';
+import TitleScene from './title';
 
 const config: Phaser.Types.Core.GameConfig = {
     width: 1000,
@@ -7,7 +8,7 @@ const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     backgroundColor: 0x333333,
     parent: 'game',
-    scene: [MainScene],
+    scene: [TitleScene, MainScene],
 };
 
 export class Game extends Phaser.Game {

@@ -8,16 +8,22 @@ import { fillPolygonInContainer } from "./common_ui/poligon";
 import { countColorsInContainer } from "./common_ui/calc_show_color";
 import { isPointInQuadrilateral } from "./common_ui/check_in_rect";
 import { sortRectPoints } from "./common_ui/sort_rect";
+import CircleObj from "./common_ui/circle_obj";
+import { simulateThrowStones, strangth } from "./sim";
 
 
 
 export class MainScene extends Phaser.Scene {
     private updataCallback: () => void;
-
+    private mode: "0CPU" | "1CPU" | "2CPU" | "3CPU";
     constructor() {
         super({
             key: 'MainScene'
         });
+    }
+
+    init(data: any) {
+        this.mode = data.mode;
     }
 
     preload(): void {
@@ -28,6 +34,7 @@ export class MainScene extends Phaser.Scene {
     }
 
     create(): void {
+
 
         // ゲーム開始
         // 背景レイヤー(背景　陣地の白マスを含む)
@@ -73,11 +80,15 @@ export class MainScene extends Phaser.Scene {
         // 現在の陣地を描画する
         const showZin = (allPlayerData: AllPlayerData) => {
             zinGraphics.clear();
-            for (let i = 0; i < allPlayerData.length; i++) {
-                const playerData = allPlayerData[i];
-                // 陣地の塗りつぶし
-                for (const rectPoint of playerData.rectPoints) {
-                    fillPolygonInContainer(zinGraphics, rectPoint, playerColors[i], 1);
+            const maxRectPoints = Math.max(...allPlayerData.map(player => player.rectPoints.length));
+
+            for (let j = 0; j < maxRectPoints; j++) {
+                for (let i = 0; i < allPlayerData.length; i++) {
+                    const playerData = allPlayerData[i];
+                    if (j < playerData.rectPoints.length) {
+                        const rectPoint = playerData.rectPoints[j];
+                        fillPolygonInContainer(zinGraphics, rectPoint, playerColors[i], 1);
+                    }
                 }
             }
         }
@@ -88,6 +99,7 @@ export class MainScene extends Phaser.Scene {
         // スプライトを画面中央に表示
         const vectorObj = this.add.sprite(0, 0, loadImages.vector);
         vectorObj.x = -999;
+        vectorObj.scaleY = 0.5;
         vectorObj.setOrigin(0, 0.5);
 
         // 石の作成
@@ -115,13 +127,12 @@ export class MainScene extends Phaser.Scene {
             }
         }
 
-
-
         // 現在のスコア
         // テキストを画面中央に表示
         const scoreLabels: Phaser.GameObjects.Text[] = [];
+        const turnCircles: CircleObj[] = [];
         {
-            let nx = 100;
+            let nx = 50;
             for (const color of playerColors) {
                 const scoreLabel = this.add.text(400, 300, 'Hello, Phaser!', {
                     fontSize: '32px',        // フォントサイズ
@@ -129,11 +140,19 @@ export class MainScene extends Phaser.Scene {
                     color: numberToColorString(color)        // 文字色（16進数表記）
                 });
                 scoreLabel.y = 10;
-                scoreLabel.x = nx;
-                nx += 100;
+                scoreLabel.x = nx + 20; // テキストの位置を円の右に調整
                 scoreLabels.push(scoreLabel);
+
+                // 自分のターンを表す円を表示
+                const circle = new CircleObj(this, 10, color);
+                circle.x = nx;
+                circle.y = 25;
+                turnCircles.push(circle);
+
+                nx += 150; // 次のテキストと円の位置を調整
             }
         }
+
         const setScoreLabel = () => {
             // 色の数を数える例
             const numbers = countColorsInContainer(this, zinGraphics, playerColors);
@@ -168,9 +187,9 @@ export class MainScene extends Phaser.Scene {
         // 決定時間
         let adjustTime = 0;
 
-        // 石の速度データ
-        let stoneVx = 0;
-        let stoneVy = 0;
+        // 移動先の座標
+        const targetPos: Point2d = { x: 0, y: 0 };
+
 
         // 投げた四角形の情報
         let throwRect: RectPoint = [];
@@ -214,6 +233,8 @@ export class MainScene extends Phaser.Scene {
                 }
                 case "power": {
                     // 強さを決定したので実際に石が動く
+                    targetPoint.x = nowPoint.x + Math.cos(vectorRad) * vectorPower * strangth;
+                    targetPoint.y = nowPoint.y + Math.sin(vectorRad) * vectorPower * strangth;
                     state = "move";
                     count = 0;
                     break;
@@ -223,21 +244,92 @@ export class MainScene extends Phaser.Scene {
 
         }, this);
 
+        const updateTurnCircles = () => {
+            turnCircles.forEach((circle, index) => {
+                if (index === nowPlayer) {
+                    circle.alpha = 1; // 現在のプレイヤーの円を表示
+                } else {
+                    circle.alpha = 0; // 他のプレイヤーの円を非表示
+                }
+            });
+        };
+
+        // 最初のターンを設定する
+        updateTurnCircles();
+
+        // CPUモードか
+        let cpuMode = false;
+        // CPUの投げ先
+        let cpuThrowPatterns: Point2d[] = [];
+
         // ターンを切り替える
         const changeTurn = () => {
             // ターンを変える
             nowPlayer = (nowPlayer + 1) % allPlayerData.length;
+            updateTurnCircles();
             clearStones();
             showZin(allPlayerData);
             state = "settingStone";
             setScoreLabel();
             throwRect = [];
+            // CPUの番であれば、計算して、目的の位置を打つ
+            const cputurns = {
+                "0CPU": 4,
+                "1CPU": 3,
+                "2CPU": 2,
+                "3CPU": 1,
+                "4CPU": 0
+            }
+            // CPUの番か確認
+            if (nowPlayer >= cputurns[this.mode]) {
+                cpuMode = true;
+                cpuThrowPatterns = simulateThrowStones(nowPlayer, allPlayerData);
+            } else {
+                cpuMode = false;
+            }
+        }
+
+        const actionCPU = () => {
+            switch (state) {
+                case "settingStone": {
+                    // 投げた回数を初期化
+                    throwCount = 0;
+
+                    // 石を設置
+                    const obj = createStone(nowPlayer, 1);
+                    obj.x = cpuThrowPatterns[throwCount].x;
+                    obj.y = cpuThrowPatterns[throwCount].y;
+                    // 四角形の頂点を追加
+                    throwRect.push({ x: obj.x, y: obj.y });
+                    // 状態を次に変える
+                    state = "targetPoint";
+
+                    count = 0;
+                    break;
+                }
+                case "targetPoint": {
+                    nowPoint.x = cpuThrowPatterns[throwCount].x;
+                    nowPoint.y = cpuThrowPatterns[throwCount].y;
+                    targetPoint.x = cpuThrowPatterns[throwCount + 1].x;
+                    targetPoint.y = cpuThrowPatterns[throwCount + 1].y;
+
+                    count = 0;
+                    state = "move";
+                    break;
+                }
+            }
         }
 
         // updateイベント内で使うためにわざわざprivate変数にするのも面倒なので、
         // create関数内でupdate関数処理が行えるようにする
         ////関数の実体を都合に良い場所で書ける。
         this.updataCallback = () => {
+            // CPUの動作
+            if (cpuMode) {
+                actionCPU();
+            }
+
+
             switch (state) {
                 case "aiming": {
                     // 目標地点をもとに角度を計算
@@ -265,17 +357,12 @@ export class MainScene extends Phaser.Scene {
                         throwStone = createStone(nowPlayer, 1);
                         throwStone.x = nowPoint.x;
                         throwStone.y = nowPoint.y;
-                        stoneVx = Math.cos(vectorRad) * vectorPower * 10;
-                        stoneVy = Math.sin(vectorRad) * vectorPower * 10;
                     }
                     // 石を動かす
-                    throwStone.x += stoneVx;
-                    throwStone.y += stoneVy;
-                    stoneVx *= 0.95;
-                    stoneVy *= 0.95;
-                    // 石が停止したらその地点を移動先とする
-                    const power = stoneVx ** 2 + stoneVy ** 2;
-                    if (power <= 0.01) {
+                    throwStone.x = throwStone.x * 0.8 + targetPoint.x * 0.2;
+                    throwStone.y = throwStone.y * 0.8 + targetPoint.y * 0.2;
+
+                    if (count >= 30) {
                         // 投げた回数を加算
                         throwCount++;
                         // 四角形の頂点を追加
