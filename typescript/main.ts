@@ -5,7 +5,7 @@ import { Button } from "./common_ui/button";
 import { Color, numberToColorString } from "./color";
 import { RectObj } from "./common_ui/rect";
 import { fillPolygonInContainer } from "./common_ui/poligon";
-import { countColorsInContainer } from "./common_ui/calc_show_color";
+import { countColorsInContainer, getColorAtPoint } from "./common_ui/calc_show_color";
 import { isPointInQuadrilateral } from "./common_ui/check_in_rect";
 import { sortRectPoints } from "./common_ui/sort_rect";
 import CircleObj from "./common_ui/circle_obj";
@@ -194,6 +194,25 @@ export class MainScene extends Phaser.Scene {
         // 投げた四角形の情報
         let throwRect: RectPoint = [];
 
+        this.input.on('pointermove', function (pointer) {
+            switch (state) {
+                case "targetPoint": {
+                    // ベクトルの表示
+                    const dx = pointer.x - nowPoint.x;
+                    const dy = pointer.y - nowPoint.y;
+                    vectorRad = Math.atan2(dy, dx);
+                    vectorPower = Math.min(300, Math.sqrt(dx * dx + dy * dy)); // 適宜スケール調整
+
+                    vectorObj.x = nowPoint.x;
+                    vectorObj.y = nowPoint.y;
+                    vectorObj.rotation = vectorRad;
+                    vectorObj.scaleX = vectorPower / 200;
+                    break;
+                }
+            }
+
+        });
+
         // 画面全体にクリックイベントを設定
         this.input.on('pointerdown', function (pointer) {
             // クリックされた位置の座標を取得
@@ -201,7 +220,7 @@ export class MainScene extends Phaser.Scene {
             switch (state) {
                 case "settingStone": {
                     // 指定した位置が自分の陣地か調べる
-                    if (!isPointInQuadrilateral(allPlayerData[nowPlayer], pointer)) {
+                    if (getColorAtPoint(this, zinGraphics, pointer) !== playerColors[nowPlayer]) {
                         return;
                     }
                     // 投げた回数を初期化
@@ -220,10 +239,19 @@ export class MainScene extends Phaser.Scene {
                     break;
                 }
                 case "targetPoint": {
-                    targetPoint.x = pointer.x;
-                    targetPoint.y = pointer.y;
 
-                    state = "aiming";
+                    // ベクトルの表示
+                    const dx = pointer.x - nowPoint.x;
+                    const dy = pointer.y - nowPoint.y;
+                    vectorRad = Math.atan2(dy, dx);
+                    vectorPower = Math.min(300, Math.sqrt(dx * dx + dy * dy)); // 適宜スケール調整
+
+                    targetPoint.x = nowPoint.x + vectorPower * Math.cos(vectorRad);
+                    targetPoint.y = nowPoint.y + vectorPower * Math.sin(vectorRad);
+
+                    state = "move";
+                    count = 0;
+
                     break;
                 }
                 case "aiming": {
@@ -337,17 +365,23 @@ export class MainScene extends Phaser.Scene {
                     // 矢印ベクトルを表示させる
                     vectorObj.x = nowPoint.x;
                     vectorObj.y = nowPoint.y;
-                    vectorRad = targetRad + Math.sin(adjustTime) * 0.3;
-                    vectorObj.rotation = targetRad + Math.sin(adjustTime) * 0.3;
-
+                    vectorRad = targetRad;
+                    vectorObj.rotation = targetRad;
                     adjustTime += 0.1;
+                    state = "power";
                     break;
                 }
                 case "power": {
                     // 矢印ベクトルの強さを変える
-                    vectorPower = 1.5 - Math.abs(Math.sin(adjustTime)) * 1.2;
+                    const power = adjustTime % 3;
+                    if (power <= 1.5) {
+                        vectorPower = 1.5 - power;
+                    } else {
+                        vectorPower = power - 1.5;
+                    }
+                    //vectorPower = 1.5 - Math.abs(Math.sin(adjustTime)) * 1.2;
                     vectorObj.scaleX = vectorPower;
-                    adjustTime += 0.025;
+                    adjustTime += 0.1;
                     break;
                 }
                 case "move": {
@@ -359,10 +393,10 @@ export class MainScene extends Phaser.Scene {
                         throwStone.y = nowPoint.y;
                     }
                     // 石を動かす
-                    throwStone.x = throwStone.x * 0.8 + targetPoint.x * 0.2;
-                    throwStone.y = throwStone.y * 0.8 + targetPoint.y * 0.2;
+                    throwStone.x = throwStone.x * 0.5 + targetPoint.x * 0.5;
+                    throwStone.y = throwStone.y * 0.5 + targetPoint.y * 0.5;
 
-                    if (count >= 30) {
+                    if (count >= 15) {
                         // 投げた回数を加算
                         throwCount++;
                         // 四角形の頂点を追加
@@ -375,15 +409,16 @@ export class MainScene extends Phaser.Scene {
                         }
                         //　もし投げた回数が2以下であれば、どこにも領地が入っていないことが条件となる
                         if (throwCount <= 2) {
-                            for (const playerData of allPlayerData) {
-                                if (isPointInQuadrilateral(playerData, throwStone)) {
+                            for (const color of playerColors) {
+
+                                if (getColorAtPoint(this, zinGraphics, { x: throwStone.x, y: throwStone.y }) === color) {
                                     changeTurn();
                                     return;
                                 }
                             }
                         } else {
                             // もし3投目であれば、自分の陣地に入っていた場合には四角形を描くことができる
-                            if (isPointInQuadrilateral(allPlayerData[nowPlayer], throwStone)) {
+                            if (getColorAtPoint(this, zinGraphics, { x: throwStone.x, y: throwStone.y }) === playerColors[nowPlayer]) {
                                 throwRect = sortRectPoints(throwRect);
                                 allPlayerData[nowPlayer].rectPoints.push(throwRect);
                                 changeTurn();

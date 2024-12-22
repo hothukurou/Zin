@@ -9,6 +9,10 @@ const config: Phaser.Types.Core.GameConfig = {
     backgroundColor: 0x333333,
     parent: 'game',
     scene: [TitleScene, MainScene],
+    fps: {
+        target: 30,
+        forceSetTimeOut: true
+    }
 };
 
 export class Game extends Phaser.Game {

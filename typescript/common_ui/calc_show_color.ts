@@ -1,3 +1,5 @@
+import { Point2d } from "../types";
+
 /**
  * コンテナ内の全ピクセルを取得して、指定した色が何ピクセル含まれていたかをカウントする
  * @param scene 対象のPhaser.Scene
@@ -56,4 +58,24 @@ export function countColorsInContainer(
     scene.textures.remove(uniqueCanvasName);
 
     return colorCounts;
+}
+
+export function getColorAtPoint(
+    scene: Phaser.Scene,
+    graphics: Phaser.GameObjects.Graphics,
+    point: Point2d
+): number {
+    // 一時的なテクスチャを作成して、グラフィックスの内容をコピー
+    const tempTextureKey = 'tempTexture';
+    graphics.generateTexture(tempTextureKey, 1000, 600);
+    const texture = scene.textures.get(tempTextureKey) as Phaser.Textures.CanvasTexture;
+    const canvas = texture.getSourceImage() as HTMLCanvasElement;
+    const context = canvas.getContext('2d');
+    const pixelData = context.getImageData(point.x, point.y, 1, 1).data;
+
+    // テクスチャを破棄
+    scene.textures.remove(tempTextureKey);
+
+    // ピクセルの色を返す
+    return Phaser.Display.Color.GetColor(pixelData[0], pixelData[1], pixelData[2]);
 }
