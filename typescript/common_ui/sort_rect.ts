@@ -1,11 +1,11 @@
-import { RectPoint } from "../types";
+import { TrianglePoint } from "../types";
 
 /**
  * 四角形の頂点がクロスしないように並び替える関数
  * @param rectPoints - 四角形の頂点の配列
  * @returns クロスしないように並び替えられた配列
  */
-export function sortRectPoints(rectPoints: RectPoint): RectPoint {
+export function sortRectPoints(rectPoints: TrianglePoint): TrianglePoint {
     if (rectPoints.length !== 4) {
         throw new Error("四角形の頂点は4つである必要があります");
     }

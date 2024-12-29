@@ -5,5 +5,5 @@ export const mapHeight = 9; // 盤の縦
 export const basePath = "images";
 export const loadImages = {
     vector: "vector.png",
-    stone: "stone.png"
+    explosion: "explosion.png"
 };

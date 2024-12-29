@@ -1,4 +1,4 @@
-import { AllPlayerData, Point2d, RectPoint } from "./types";
+import { AllPlayerData, Point2d, TrianglePoint } from "./types";
 import { basePath, loadImages, mapHeight, mapWidth, tileSize } from "./general";
 import { YesNoDialog } from "./yes_no_dialog";
 import { Button } from "./common_ui/button";
@@ -6,11 +6,11 @@ import { Color, numberToColorString } from "./color";
 import { RectObj } from "./common_ui/rect";
 import { fillPolygonInContainer } from "./common_ui/poligon";
 import { countColorsInContainer, getColorAtPoint } from "./common_ui/calc_show_color";
-import { isPointInQuadrilateral } from "./common_ui/check_in_rect";
+import { isPointInsidePolygon, isPointInTriangle } from "./common_ui/check_in_rect";
 import { sortRectPoints } from "./common_ui/sort_rect";
 import CircleObj from "./common_ui/circle_obj";
 import { simulateThrowStones, strangth } from "./sim";
-
+import { Explosion } from "./common_ui/explosion";
 
 
 export class MainScene extends Phaser.Scene {
@@ -31,10 +31,13 @@ export class MainScene extends Phaser.Scene {
         for (const imagePath of imagePathes) {
             this.load.image(loadImages[imagePath], "./" + basePath + "/" + loadImages[imagePath]);
         }
+
+        this.load.spritesheet("explosion", './images/explosion.png', { frameWidth: 60, frameHeight: 60 });
+
+
     }
 
     create(): void {
-
 
         // ゲーム開始
         // 背景レイヤー(背景　陣地の白マスを含む)
@@ -60,15 +63,25 @@ export class MainScene extends Phaser.Scene {
 
         // パラメータをリセットする
         const allPlayerData: AllPlayerData = [];
-        allPlayerData.push({ rectPoints: [] });
-        allPlayerData.push({ rectPoints: [] });
-        allPlayerData.push({ rectPoints: [] });
-        allPlayerData.push({ rectPoints: [] });
+        allPlayerData.push({ trianglePoints: [], state: "setStone" });
+        allPlayerData.push({ trianglePoints: [], state: "setStone" });
+        allPlayerData.push({ trianglePoints: [], state: "setStone" });
+        allPlayerData.push({ trianglePoints: [], state: "setStone" });
         // 4人分のパラメータ追加
-        allPlayerData[0].rectPoints.push([{ x: 50, y: 50 }, { x: 50, y: 150 }, { x: 150, y: 150 }, { x: 150, y: 50 }]);
-        allPlayerData[1].rectPoints.push([{ x: 850, y: 450 }, { x: 850, y: 550 }, { x: 950, y: 550 }, { x: 950, y: 450 }]);
-        allPlayerData[2].rectPoints.push([{ x: 50, y: 550 }, { x: 50, y: 450 }, { x: 150, y: 450 }, { x: 150, y: 550 }]);
-        allPlayerData[3].rectPoints.push([{ x: 950, y: 50 }, { x: 850, y: 50 }, { x: 850, y: 150 }, { x: 950, y: 150 }]);
+        allPlayerData[0].trianglePoints.push([{ x: 50, y: 50 }, { x: 50, y: 150 }, { x: 150, y: 150 }]);
+        allPlayerData[0].trianglePoints.push([{ x: 50, y: 50 }, { x: 150, y: 150 }, { x: 150, y: 50 }]);
+        allPlayerData[0].trianglePoints.push([]);
+        allPlayerData[1].trianglePoints.push([{ x: 850, y: 450 }, { x: 850, y: 550 }, { x: 950, y: 550 }]);
+        allPlayerData[1].trianglePoints.push([{ x: 850, y: 450 }, { x: 950, y: 550 }, { x: 950, y: 450 }]);
+        allPlayerData[1].trianglePoints.push([]);
+        allPlayerData[2].trianglePoints.push([{ x: 50, y: 550 }, { x: 50, y: 450 }, { x: 150, y: 450 }]);
+        allPlayerData[2].trianglePoints.push([{ x: 50, y: 550 }, { x: 150, y: 450 }, { x: 150, y: 550 }]);
+        allPlayerData[2].trianglePoints.push([]);
+        allPlayerData[3].trianglePoints.push([{ x: 950, y: 50 }, { x: 850, y: 50 }, { x: 850, y: 150 }]);
+        allPlayerData[3].trianglePoints.push([{ x: 950, y: 50 }, { x: 850, y: 150 }, { x: 950, y: 150 }]);
+        allPlayerData[3].trianglePoints.push([]);
+
+
 
         // 一例
         //allPlayerData[0].rectPoints.push([{ x: 55, y: 55 }, { x: 300, y: 300 }, { x: 200, y: 150 }, { x: 90, y: 50 }]);
@@ -78,21 +91,10 @@ export class MainScene extends Phaser.Scene {
 
 
         // 現在の陣地を描画する
-        const showZin = (allPlayerData: AllPlayerData) => {
-            zinGraphics.clear();
-            const maxRectPoints = Math.max(...allPlayerData.map(player => player.rectPoints.length));
-
-            for (let j = 0; j < maxRectPoints; j++) {
-                for (let i = 0; i < allPlayerData.length; i++) {
-                    const playerData = allPlayerData[i];
-                    if (j < playerData.rectPoints.length) {
-                        const rectPoint = playerData.rectPoints[j];
-                        fillPolygonInContainer(zinGraphics, rectPoint, playerColors[i], 1);
-                    }
-                }
-            }
+        const drawZin = (trianglePoints: TrianglePoint, nowPlayer: number) => {
+            fillPolygonInContainer(zinGraphics, trianglePoints, playerColors[nowPlayer], 1);
         }
-        showZin(allPlayerData);
+        //showZin(allPlayerData);
 
 
         // 強さベクトルの表示
@@ -103,11 +105,17 @@ export class MainScene extends Phaser.Scene {
         vectorObj.setOrigin(0, 0.5);
 
         // 石の作成
-        const stoneObjs: Phaser.GameObjects.Graphics[] = [];
+        const stoneObjs: Phaser.GameObjects.Graphics[][] = [];
+
+        // プレイヤーごとに石を管理する
+        for (let i = 0; i < allPlayerData.length; i++) {
+            stoneObjs.push([]);
+        }
 
         const createStone = (nowPlayer: number, alpha: number) => {
             // objの位置と半径からPhaser.Geom.Circleを作成
             const circle = new Phaser.Geom.Circle(0, 0, 10);
+
 
             // 白い境界線を描画
             const graphics = this.add.graphics();
@@ -115,14 +123,14 @@ export class MainScene extends Phaser.Scene {
             graphics.fillStyle(playerColors[nowPlayer], alpha);
             graphics.fillCircleShape(circle); // Geom.Circleを渡して境界線を描画
             graphics.strokeCircleShape(circle); // Geom.Circleを渡して境界線を描画
-            stoneObjs.push(graphics);
+            stoneObjs[nowPlayer].push(graphics);
             return graphics;
         }
 
-        // 全ての石を消す
-        const clearStones = () => {
-            while (stoneObjs.length > 0) {
-                const obj = stoneObjs.pop();
+        // 指定したプレイヤーの全ての石を消す
+        const clearStones = (player: number) => {
+            while (stoneObjs[player].length > 0) {
+                const obj = stoneObjs[player].pop();
                 obj.destroy(true);
             }
         }
@@ -170,9 +178,8 @@ export class MainScene extends Phaser.Scene {
 
 
         // 状態
-        let state: "settingStone" | "targetPoint" | "aiming" | "power" | "move" | "end" = "settingStone";
+        let state: "settingStone" | "targetPoint" | "move" | "end" = "settingStone";
         let turn = 1;
-        let throwCount = 0; // 投げた回数
         let nowPlayer = 0; // これから動かすプレイヤー
         let count = 0;
 
@@ -189,10 +196,6 @@ export class MainScene extends Phaser.Scene {
 
         // 移動先の座標
         const targetPos: Point2d = { x: 0, y: 0 };
-
-
-        // 投げた四角形の情報
-        let throwRect: RectPoint = [];
 
         this.input.on('pointermove', function (pointer) {
             switch (state) {
@@ -212,9 +215,8 @@ export class MainScene extends Phaser.Scene {
             }
 
         });
-
         // 画面全体にクリックイベントを設定
-        this.input.on('pointerdown', function (pointer) {
+        this.input.on('pointerdown', (pointer) => {
             // クリックされた位置の座標を取得
 
             switch (state) {
@@ -223,8 +225,6 @@ export class MainScene extends Phaser.Scene {
                     if (getColorAtPoint(this, zinGraphics, pointer) !== playerColors[nowPlayer]) {
                         return;
                     }
-                    // 投げた回数を初期化
-                    throwCount = 0;
                     // 石を設置
                     const obj = createStone(nowPlayer, 1);
                     obj.x = pointer.x;
@@ -232,8 +232,9 @@ export class MainScene extends Phaser.Scene {
                     nowPoint.x = pointer.x;
                     nowPoint.y = pointer.y;
 
-                    // 四角形の頂点を追加
-                    throwRect.push({ x: obj.x, y: obj.y });
+                    // 三角形の頂点を追加
+                    const lastIndex = allPlayerData[nowPlayer].trianglePoints.length - 1;
+                    allPlayerData[nowPlayer].trianglePoints[lastIndex].push({ x: obj.x, y: obj.y });
                     // 状態を次に変える
                     state = "targetPoint";
                     break;
@@ -252,19 +253,6 @@ export class MainScene extends Phaser.Scene {
                     state = "move";
                     count = 0;
 
-                    break;
-                }
-                case "aiming": {
-                    // 投げる方向が決まってので、次は強さ調整に入る
-                    state = "power";
-                    break;
-                }
-                case "power": {
-                    // 強さを決定したので実際に石が動く
-                    targetPoint.x = nowPoint.x + Math.cos(vectorRad) * vectorPower * strangth;
-                    targetPoint.y = nowPoint.y + Math.sin(vectorRad) * vectorPower * strangth;
-                    state = "move";
-                    count = 0;
                     break;
                 }
             }
@@ -292,14 +280,30 @@ export class MainScene extends Phaser.Scene {
 
         // ターンを切り替える
         const changeTurn = () => {
+            // 直前のプレイヤーの最新の石を表示
+            clearStones(nowPlayer);
+            setStonsByTriangle();
+
             // ターンを変える
             nowPlayer = (nowPlayer + 1) % allPlayerData.length;
+
+            // 現在のプレイヤーの最新の石を表示
+            clearStones(nowPlayer);
+            setStonsByTriangle();
+
             updateTurnCircles();
-            clearStones();
-            showZin(allPlayerData);
-            state = "settingStone";
+            //clearStones();
+            if (allPlayerData[nowPlayer].state === "setStone") {
+                state = "settingStone";
+            } else {
+                const trianglePoints = allPlayerData[nowPlayer].trianglePoints;
+                const nowTriangleLength = trianglePoints.length;  //現在指定の三角形の個数
+                const trianglePointsLength = trianglePoints[nowTriangleLength - 1].length; //現在指定の三角形の点の数
+                nowPoint.x = trianglePoints[nowTriangleLength - 1][trianglePointsLength - 1].x;
+                nowPoint.y = trianglePoints[nowTriangleLength - 1][trianglePointsLength - 1].y;
+                state = "targetPoint";
+            }
             setScoreLabel();
-            throwRect = [];
             // CPUの番であれば、計算して、目的の位置を打つ
             const cputurns = {
                 "0CPU": 4,
@@ -311,40 +315,40 @@ export class MainScene extends Phaser.Scene {
             // CPUの番か確認
             if (nowPlayer >= cputurns[this.mode]) {
                 cpuMode = true;
-                cpuThrowPatterns = simulateThrowStones(nowPlayer, allPlayerData);
+                //cpuThrowPatterns = simulateThrowStones(this, nowPlayer, allPlayerData);
             } else {
                 cpuMode = false;
             }
+
+            // 
         }
 
         const actionCPU = () => {
             switch (state) {
                 case "settingStone": {
-                    // 投げた回数を初期化
-                    throwCount = 0;
 
-                    // 石を設置
-                    const obj = createStone(nowPlayer, 1);
-                    obj.x = cpuThrowPatterns[throwCount].x;
-                    obj.y = cpuThrowPatterns[throwCount].y;
-                    // 四角形の頂点を追加
-                    throwRect.push({ x: obj.x, y: obj.y });
-                    // 状態を次に変える
-                    state = "targetPoint";
 
                     count = 0;
                     break;
                 }
                 case "targetPoint": {
-                    nowPoint.x = cpuThrowPatterns[throwCount].x;
-                    nowPoint.y = cpuThrowPatterns[throwCount].y;
-                    targetPoint.x = cpuThrowPatterns[throwCount + 1].x;
-                    targetPoint.y = cpuThrowPatterns[throwCount + 1].y;
 
-                    count = 0;
-                    state = "move";
                     break;
                 }
+            }
+        }
+
+        // 最新の三角形の頂点にあたる石を用意する
+        const setStonsByTriangle = () => {
+            // 初期配置で三角形を2つ用意しているが、これは表示しない
+            if (allPlayerData[nowPlayer].trianglePoints.length <= 2) return;
+            // 現在作成予定の三角形の点情報を一通り表示する
+            const lastIndex = allPlayerData[nowPlayer].trianglePoints.length - 1;
+            for (let i = 0; i < allPlayerData[nowPlayer].trianglePoints[lastIndex].length; i++) {
+                const trianglePoints = allPlayerData[nowPlayer].trianglePoints[lastIndex][i];
+                const obj = createStone(nowPlayer, 0.5);
+                obj.x = trianglePoints.x;
+                obj.y = trianglePoints.y;
             }
         }
 
@@ -352,6 +356,7 @@ export class MainScene extends Phaser.Scene {
         // create関数内でupdate関数処理が行えるようにする
         ////関数の実体を都合に良い場所で書ける。
         this.updataCallback = () => {
+            // もしプレイヤーは陣地内に石を設置していたら
             // CPUの動作
             if (cpuMode) {
                 actionCPU();
@@ -359,87 +364,115 @@ export class MainScene extends Phaser.Scene {
 
 
             switch (state) {
-                case "aiming": {
-                    // 目標地点をもとに角度を計算
-                    const targetRad = Math.atan2(targetPoint.y - nowPoint.y, targetPoint.x - nowPoint.x);
-                    // 矢印ベクトルを表示させる
-                    vectorObj.x = nowPoint.x;
-                    vectorObj.y = nowPoint.y;
-                    vectorRad = targetRad;
-                    vectorObj.rotation = targetRad;
-                    adjustTime += 0.1;
-                    state = "power";
-                    break;
-                }
-                case "power": {
-                    // 矢印ベクトルの強さを変える
-                    const power = adjustTime % 3;
-                    if (power <= 1.5) {
-                        vectorPower = 1.5 - power;
-                    } else {
-                        vectorPower = power - 1.5;
-                    }
-                    //vectorPower = 1.5 - Math.abs(Math.sin(adjustTime)) * 1.2;
-                    vectorObj.scaleX = vectorPower;
-                    adjustTime += 0.1;
-                    break;
-                }
                 case "move": {
                     count++;
                     if (count === 1) {
                         vectorObj.x = -999;
+                        // 自分の持っている石表示を全て消す
+                        clearStones(nowPlayer);
                         throwStone = createStone(nowPlayer, 1);
                         throwStone.x = nowPoint.x;
                         throwStone.y = nowPoint.y;
+
+                        // 現在作成予定の三角形の点情報を一通り表示する
+                        setStonsByTriangle();
+
+
                     }
                     // 石を動かす
                     throwStone.x = throwStone.x * 0.5 + targetPoint.x * 0.5;
                     throwStone.y = throwStone.y * 0.5 + targetPoint.y * 0.5;
 
                     if (count >= 15) {
-                        // 投げた回数を加算
-                        throwCount++;
-                        // 四角形の頂点を追加
-                        throwRect.push({ x: throwStone.x, y: throwStone.y });
+                        // 三角形の頂点を追加
+                        allPlayerData[nowPlayer].trianglePoints[allPlayerData[nowPlayer].trianglePoints.length - 1].push({ x: throwStone.x, y: throwStone.y });
 
                         // 範囲外ならば強制終了
                         if (throwStone.x < 50 || throwStone.x > 950 || throwStone.y < 50 || throwStone.y > 550) {
+                            allPlayerData[nowPlayer].trianglePoints.pop(); //直前の三角形を消す
+                            allPlayerData[nowPlayer].trianglePoints.push([]);
+                            allPlayerData[nowPlayer].state = "setStone";
+                            clearStones(nowPlayer);
                             changeTurn();
                             return;
                         }
+                        console.log(allPlayerData[nowPlayer].trianglePoints[allPlayerData[nowPlayer].trianglePoints.length - 1].length);
                         //　もし投げた回数が2以下であれば、どこにも領地が入っていないことが条件となる
-                        if (throwCount <= 2) {
+                        if (allPlayerData[nowPlayer].trianglePoints[allPlayerData[nowPlayer].trianglePoints.length - 1].length <= 2) {
                             for (const color of playerColors) {
-
                                 if (getColorAtPoint(this, zinGraphics, { x: throwStone.x, y: throwStone.y }) === color) {
+                                    // 領域に被ったら終わり
+                                    allPlayerData[nowPlayer].trianglePoints.pop(); //直前の三角形を消す
+                                    allPlayerData[nowPlayer].trianglePoints.push([]);
+                                    allPlayerData[nowPlayer].state = "setStone";
+                                    clearStones(nowPlayer);
                                     changeTurn();
                                     return;
                                 }
                             }
+                            allPlayerData[nowPlayer].state = "triangle";
+                            changeTurn();
+                            return;
                         } else {
-                            // もし3投目であれば、自分の陣地に入っていた場合には四角形を描くことができる
-                            if (getColorAtPoint(this, zinGraphics, { x: throwStone.x, y: throwStone.y }) === playerColors[nowPlayer]) {
-                                throwRect = sortRectPoints(throwRect);
-                                allPlayerData[nowPlayer].rectPoints.push(throwRect);
-                                changeTurn();
-                                return;
-                            } else {
-                                changeTurn();
-                                return;
+                            for (const color of playerColors) {
+                                if (getColorAtPoint(this, zinGraphics, { x: throwStone.x, y: throwStone.y }) === color) {
+                                    // 領域に被ったら終わり
+                                    allPlayerData[nowPlayer].trianglePoints.pop(); //直前の三角形を消す
+                                    allPlayerData[nowPlayer].trianglePoints.push([]);
+                                    allPlayerData[nowPlayer].state = "setStone";
+                                    clearStones(nowPlayer);
+                                    changeTurn();
+                                    return;
+                                }
                             }
+                            // もし領地内に他のプレイヤーの石が入っていたら、その石を取り除く
+                            const newTrianglePoints = allPlayerData[nowPlayer].trianglePoints[allPlayerData[nowPlayer].trianglePoints.length - 1];
+                            for (let i = 0; i < allPlayerData.length; i++) {
+                                if (i === nowPlayer) continue;
+                                const lastIndex = allPlayerData[i].trianglePoints.length - 1;
+                                const trianglePoints = allPlayerData[i].trianglePoints[lastIndex];
+                                for (let j = 0; j < trianglePoints.length; j++) {
+                                    const point = trianglePoints[j];
+                                    if (isPointInsidePolygon(newTrianglePoints, point)) {
+                                        // 石のデータを取り除く
+                                        for (const pos of allPlayerData[i].trianglePoints[lastIndex]) {
+                                            const obj = new Explosion(this, pos.x, pos.y, "explosion");
+                                        }
+                                        allPlayerData[i].trianglePoints.pop();
+                                        allPlayerData[i].trianglePoints.push([]);
+                                        clearStones(i);
+                                        allPlayerData[i].state = "setStone";
+                                        break;
+                                    }
+                                }
+                            }
+                            drawZin(newTrianglePoints, nowPlayer);
+                            // 3点引けた場合は三角形ができるので、次の三角形を準備する
+                            // 前回引けた三角形の最後の二点を登録する
+                            const prevPoint = {
+                                x: allPlayerData[nowPlayer].trianglePoints[allPlayerData[nowPlayer].trianglePoints.length - 1][1].x,
+                                y: allPlayerData[nowPlayer].trianglePoints[allPlayerData[nowPlayer].trianglePoints.length - 1][1].y
+                            };
+                            allPlayerData[nowPlayer].trianglePoints.push([prevPoint, { x: throwStone.x, y: throwStone.y }]);
+                            changeTurn();
 
                         }
-
-                        state = "targetPoint";
-                        nowPoint.x = throwStone.x;
-                        nowPoint.y = throwStone.y;
-
-
                     }
                 }
             }
 
         }
+
+
+        // 初期設定のデータを陣地として描画
+        drawZin(allPlayerData[0].trianglePoints[0], 0);
+        drawZin(allPlayerData[0].trianglePoints[1], 0);
+        drawZin(allPlayerData[1].trianglePoints[0], 1);
+        drawZin(allPlayerData[1].trianglePoints[1], 1);
+        drawZin(allPlayerData[2].trianglePoints[0], 2);
+        drawZin(allPlayerData[2].trianglePoints[1], 2);
+        drawZin(allPlayerData[3].trianglePoints[0], 3);
+        drawZin(allPlayerData[3].trianglePoints[1], 3);
     }
     update(): void {//delta
         // create関数内で以下関数の中身は定義しておく,変数はthis必要なし

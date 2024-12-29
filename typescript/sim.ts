@@ -1,4 +1,4 @@
-import { isPointInQuadrilateral } from "./common_ui/check_in_rect";
+import { getColorAtPoint } from "./common_ui/calc_show_color";
 import { AllPlayerData, Point2d } from "./types";
 
 const ScreenMinX = 50;
@@ -7,7 +7,7 @@ const ScreenWidth = 900;
 const ScreenHeight = 500;
 export const strangth = 200;
 
-export const simulateThrowStones = (nowPlayer: number, allPlayerData: AllPlayerData): Point2d[] => {
+export const simulateThrowStones = (scene: Phaser.Scene, zinGraphics, nowPlayer: number, allPlayerData: AllPlayerData): Point2d[] => {
     let bestArea = 0; // 最大の面積
     let bestPoints: Point2d[] = [];
     const simCount = 1000;
@@ -17,7 +17,7 @@ export const simulateThrowStones = (nowPlayer: number, allPlayerData: AllPlayerD
         let firstPoint: Point2d;
         do {
             firstPoint = { x: Math.random() * ScreenWidth + ScreenMinX, y: Math.random() * ScreenHeight + ScreenMinY };
-        } while (!isPointInQuadrilateral(allPlayerData[nowPlayer], firstPoint));
+        } while (!getColorAtPoint(scene, zinGraphics, firstPoint));
 
         const points: Point2d[] = [firstPoint];
 
@@ -36,13 +36,6 @@ export const simulateThrowStones = (nowPlayer: number, allPlayerData: AllPlayerD
             nextPoint.y < ScreenMinY || nextPoint.y > ScreenMinY + ScreenHeight);
             points.push(nextPoint);
         }
-
-        // 四点目を決める
-        let fourthPoint: Point2d;
-        do {
-            fourthPoint = { x: Math.random() * ScreenWidth + ScreenMinX, y: Math.random() * ScreenHeight + ScreenMinY };
-        } while (!isPointInQuadrilateral(allPlayerData[nowPlayer], fourthPoint));
-        points.push(fourthPoint);
 
         // 面積を計算
         const area = calcArea(points);

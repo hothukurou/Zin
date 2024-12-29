@@ -1,14 +1,14 @@
-import { PlayerData, Point2d, RectPoint } from "../types";
+import { PlayerData, Point2d, TrianglePoint } from "../types";
 
 /**
-* 指定した点が四辺形配列に含まれているかを判定する関数
+* 指定した点が3辺形配列に含まれているかを判定する関数
 * @param playerData - プレイヤーデータ
 * @param point - 判定したい座標
 * @returns 含まれていれば true、含まれていなければ false
 */
-export function isPointInQuadrilateral(playerData: PlayerData, point: Point2d): boolean {
-    for (const rect of playerData.rectPoints) {
-        if (rect.length === 4 && isPointInsidePolygon(rect, point)) {
+export function isPointInTriangle(playerData: PlayerData, point: Point2d): boolean {
+    for (const triangle of playerData.trianglePoints) {
+        if (triangle.length === 3 && isPointInsidePolygon(triangle, point)) {
             return true;
         }
     }
@@ -16,16 +16,15 @@ export function isPointInQuadrilateral(playerData: PlayerData, point: Point2d): 
 }
 
 /**
-* 点が任意の四辺形内にあるかを判定する関数
-* @param polygon - 四辺形を構成する4つの点
+* 点が任意の3辺形内にあるかを判定する関数
+* @param polygon - 四辺形を構成するつの点
 * @param point - 判定したい点
 * @returns 含まれていれば true、含まれていなければ false
 */
-function isPointInsidePolygon(polygon: RectPoint, point: Point2d): boolean {
+export function isPointInsidePolygon(polygon: TrianglePoint, point: Point2d): boolean {
     // 三角形を2つに分けて、それぞれの内外判定を行う
     return (
-        isPointInsideTriangle(polygon[0], polygon[1], polygon[2], point) ||
-        isPointInsideTriangle(polygon[0], polygon[2], polygon[3], point)
+        isPointInsideTriangle(polygon[0], polygon[1], polygon[2], point)
     );
 }
 

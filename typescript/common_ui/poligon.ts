@@ -12,7 +12,6 @@ export function fillPolygonInContainer(
     fillAlpha: number = 1
 ): Phaser.GameObjects.Graphics {
     if (points.length < 3) {
-        console.error("多角形を描画するには、少なくとも3つの頂点が必要です。");
         return;
     }
 

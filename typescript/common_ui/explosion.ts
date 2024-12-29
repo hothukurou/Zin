@@ -1,30 +1,26 @@
+export class Explosion extends Phaser.GameObjects.Sprite {
+    constructor(scene: Phaser.Scene, x: number, y: number, path: string) {
+        super(scene, x, y, path);
+        scene.add.existing(this);
 
-export class Explosion extends Phaser.GameObjects.Container {
-    constructor(scene: Phaser.Scene, x: number, y: number, destroyTimeMs: number) {
-        super(scene, x, y);
-        const explosion = scene.add.sprite(0, 0, "explosion");
-        explosion.setOrigin(0.5);
-        this.add(explosion);
-        explosion.scale = 5;
-        const tween = scene.tweens.create({
-            targets: explosion,
-            duration: destroyTimeMs,
-            ease: Phaser.Math.Easing.Quartic.In,
-            props: {
 
-            },
-            loop: false,
-            onComplete: () => {
-                explosion.destroy();
-            }
+        this.setOrigin(0.5, 0.5);
+        this.setDisplaySize(60, 60);
+
+        // アニメーションの定義
+        if (!scene.anims.exists('explode')) {
+            scene.anims.create({
+                key: 'explode',
+                frames: scene.anims.generateFrameNumbers(path, { start: 0, end: 4 }),
+                frameRate: 10,
+                repeat: 0
+            });
+        }
+
+        this.play('explode');
+
+        this.on('animationcomplete', () => {
+            this.destroy();
         });
-        const anim = scene.anims.create({
-            key: 'animsKey',
-            frames: scene.anims.generateFrameNumbers("explosion", { start: 0, end: 5 }),
-            frameRate: 30,
-            repeat: 10,
-        });
-        explosion.anims.play("animsKey");
-        tween.play();
     }
 }
